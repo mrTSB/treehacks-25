@@ -110,5 +110,5 @@ def keyframeDetection(source, Thres, plotMetrics=False):
     return keyframe_times
     
 if __name__ == "__main__":
-    keyframe_times = keyframeDetection("raw/IMG_4806.mp4", 0.8, plotMetrics=False)
+    keyframe_times = keyframeDetection("raw/acrobacia.mp4", 0.50, plotMetrics=False)
     print("Keyframes detected at these timestamps (in seconds):", keyframe_times)

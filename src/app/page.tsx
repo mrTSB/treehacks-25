@@ -38,13 +38,9 @@ export default function Home() {
   const [processing, setProcessing] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
-  const [volume, setVolume] = useState(1);
-  const [isMuted, setIsMuted] = useState(false);
-  const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [isPlaying, setIsPlaying] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
-  const isDraggingRef = useRef<'start' | 'end' | null>(null);
   const [filters, setFilters] = useState<VideoFilters>({
     brightness: 100,
     contrast: 100,
@@ -55,7 +51,6 @@ export default function Home() {
   });
   const [cleanupProcessing, setCleanupProcessing] = useState(false);
   const [replacingVisuals, setReplacingVisuals] = useState(false);
-  const [tasks, setTasks] = useState<Operation[]>([]);
 
   const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -96,37 +91,6 @@ export default function Home() {
       videoRef.current.currentTime = newTime;
     }
   };
-
-  const handleMarkerMouseDown = (type: 'start' | 'end') => (e: React.MouseEvent) => {
-    e.stopPropagation();
-    isDraggingRef.current = type;
-  };
-
-  const handleTimelineMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isDraggingRef.current || !timelineRef.current || !duration) return;
-
-    const rect = timelineRef.current.getBoundingClientRect();
-    const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-    const percentage = x / rect.width;
-    const newTime = formatTime(percentage * duration);
-
-    if (isDraggingRef.current === 'start') {
-      setStartTime(newTime);
-    } else {
-      setEndTime(newTime);
-    }
-  };
-
-  const handleTimelineMouseUp = () => {
-    isDraggingRef.current = null;
-  };
-
-  useEffect(() => {
-    document.addEventListener('mouseup', handleTimelineMouseUp);
-    return () => {
-      document.removeEventListener('mouseup', handleTimelineMouseUp);
-    };
-  }, []);
 
   useEffect(() => {
     return () => {
@@ -191,63 +155,6 @@ export default function Home() {
       }
       setIsPlaying(!isPlaying);
     }
-  };
-
-  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newVolume = parseFloat(e.target.value);
-    setVolume(newVolume);
-    if (videoRef.current) {
-      videoRef.current.volume = Math.min(1, newVolume);
-    }
-    setFilters(prev => ({ ...prev, volume: newVolume }));
-    setIsMuted(newVolume === 0);
-  };
-
-  const handleMuteToggle = () => {
-    if (videoRef.current) {
-      const newMutedState = !isMuted;
-      const newVolume = newMutedState ? 0 : 1;
-      videoRef.current.muted = newMutedState;
-      setIsMuted(newMutedState);
-      setVolume(newVolume);
-      setFilters(prev => ({ ...prev, volume: newVolume }));
-    }
-  };
-
-  const handleSpeedChange = (speed: number) => {
-    if (videoRef.current) {
-      videoRef.current.playbackRate = speed;
-      setPlaybackSpeed(speed);
-    }
-  };
-
-  const handleFilterChange = (type: keyof VideoFilters, value: number | string) => {
-    setFilters(prev => ({ ...prev, [type]: value }));
-  };
-
-  const getFilterStyle = () => {
-    const { brightness, contrast, saturation, rotation, filter } = filters;
-    let filterString = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%)`;
-    
-    if (filter !== 'none') {
-      switch (filter) {
-        case 'grayscale':
-          filterString += ' grayscale(100%)';
-          break;
-        case 'sepia':
-          filterString += ' sepia(100%)';
-          break;
-        case 'invert':
-          filterString += ' invert(100%)';
-          break;
-      }
-    }
-
-    return {
-      filter: filterString,
-      transform: `rotate(${rotation}deg)`,
-      transition: 'filter 0.3s ease, transform 0.3s ease'
-    };
   };
 
   const handleSeek = (seconds: number) => {
@@ -432,27 +339,6 @@ export default function Home() {
     }
   };
 
-  const testTaskList = async () => {
-    const userPrompt = "I want to trim my video to remove unnecessary parts and add some background music"
-    
-    try {
-      const response = await fetch('/api/get-task-list', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ userPrompt }),
-      })
-      
-      const data = await response.json()
-      console.log(data.tasks)
-      setTasks(data.tasks)
-      console.log('Received tasks:', data.tasks)
-    } catch (error) {
-      console.error('Error testing task list:', error)
-    }
-  }
-
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="max-w-[1600px] mx-auto p-4 sm:p-6">
@@ -513,7 +399,6 @@ export default function Home() {
                       src={videoUrl}
                       controls={false}
                       className="w-full h-full"
-                      style={getFilterStyle()}
                       onTimeUpdate={handleTimeUpdate}
                       onLoadedMetadata={handleLoadedMetadata}
                       onPlay={() => setIsPlaying(true)}
@@ -567,17 +452,6 @@ export default function Home() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.933 12.8a1 1 0 000-1.6L6.6 7.2A1 1 0 005 8v8a1 1 0 001.6.8l5.333-4zM19.933 12.8a1 1 0 000-1.6l-5.333-4A1 1 0 0013 8v8a1 1 0 001.6.8l5.333-4z" />
                           </svg>
                         </button>
-
-                        <select
-                          value={playbackSpeed}
-                          onChange={(e) => handleSpeedChange(parseFloat(e.target.value))}
-                          className="bg-transparent text-sm font-medium focus:outline-none cursor-pointer px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                        >
-                          <option value="0.5">0.5x</option>
-                          <option value="1">1x</option>
-                          <option value="1.5">1.5x</option>
-                          <option value="2">2x</option>
-                        </select>
                       </div>
                     </div>
 
@@ -587,7 +461,6 @@ export default function Home() {
                         ref={timelineRef}
                         className="relative h-12 bg-gray-100 dark:bg-gray-700/50 rounded-lg cursor-pointer group"
                         onClick={handleTimelineClick}
-                        onMouseMove={handleTimelineMouseMove}
                       >
                         {/* Progress bar */}
                         <div 
@@ -608,7 +481,6 @@ export default function Home() {
                         <div
                           className="absolute top-0 w-1 h-full bg-blue-600 dark:bg-blue-400 cursor-ew-resize hover:w-1.5 transition-all"
                           style={{ left: `${startTimePercentage}%` }}
-                          onMouseDown={handleMarkerMouseDown('start')}
                         >
                           <div className="absolute -top-7 left-1/2 -translate-x-1/2 px-2 py-1 rounded bg-white dark:bg-gray-800 shadow-sm text-xs font-medium">
                             {startTime}
@@ -619,7 +491,6 @@ export default function Home() {
                         <div
                           className="absolute top-0 w-1 h-full bg-blue-600 dark:bg-blue-400 cursor-ew-resize hover:w-1.5 transition-all"
                           style={{ left: `${endTimePercentage}%` }}
-                          onMouseDown={handleMarkerMouseDown('end')}
                         >
                           <div className="absolute -top-7 left-1/2 -translate-x-1/2 px-2 py-1 rounded bg-white dark:bg-gray-800 shadow-sm text-xs font-medium">
                             {endTime}
@@ -760,190 +631,10 @@ export default function Home() {
                 </div>
               </div>
             </div>
-
-            {/* Sidebar */}
-            <div className="w-80 shrink-0 space-y-4">
-              {/* Audio Controls */}
-              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-                <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-4">Audio</h3>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Volume</label>
-                      <button
-                        onClick={handleMuteToggle}
-                        className="p-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                      >
-                        {isMuted ? (
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-                          </svg>
-                        ) : (
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                          </svg>
-                        )}
-                      </button>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="2"
-                      step="0.1"
-                      value={volume}
-                      onChange={handleVolumeChange}
-                      className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full appearance-none cursor-pointer accent-blue-600 dark:accent-blue-400"
-                    />
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
-                      {Math.round(volume * 100)}%
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Bass Boost</label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="2"
-                      step="0.1"
-                      value={filters.bassBoost || 1}
-                      onChange={(e) => handleFilterChange('bassBoost', parseFloat(e.target.value))}
-                      className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full appearance-none cursor-pointer accent-blue-600 dark:accent-blue-400"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Treble</label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="2"
-                      step="0.1"
-                      value={filters.treble || 1}
-                      onChange={(e) => handleFilterChange('treble', parseFloat(e.target.value))}
-                      className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full appearance-none cursor-pointer accent-blue-600 dark:accent-blue-400"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Video Adjustments */}
-              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-                <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-4">Video</h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Brightness</label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="200"
-                      value={filters.brightness}
-                      onChange={(e) => handleFilterChange('brightness', parseInt(e.target.value))}
-                      className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full appearance-none cursor-pointer accent-blue-600 dark:accent-blue-400"
-                    />
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      {filters.brightness}%
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Contrast</label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="200"
-                      value={filters.contrast}
-                      onChange={(e) => handleFilterChange('contrast', parseInt(e.target.value))}
-                      className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full appearance-none cursor-pointer accent-blue-600 dark:accent-blue-400"
-                    />
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      {filters.contrast}%
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Saturation</label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="200"
-                      value={filters.saturation}
-                      onChange={(e) => handleFilterChange('saturation', parseInt(e.target.value))}
-                      className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full appearance-none cursor-pointer accent-blue-600 dark:accent-blue-400"
-                    />
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      {filters.saturation}%
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Rotation */}
-              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-                <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-4">Rotation</h3>
-                <div className="grid grid-cols-2 gap-2">
-                  {[0, 90, 180, 270].map((deg) => (
-                    <button
-                      key={deg}
-                      onClick={() => handleFilterChange('rotation', deg)}
-                      className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                        filters.rotation === deg
-                          ? 'bg-blue-600 dark:bg-blue-500 text-white'
-                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
-                      }`}
-                    >
-                      {deg}°
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Filters */}
-              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-                <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-4">Filters</h3>
-                <div className="grid grid-cols-2 gap-2">
-                  {['none', 'grayscale', 'sepia', 'invert'].map((filterName) => (
-                    <button
-                      key={filterName}
-                      onClick={() => handleFilterChange('filter', filterName)}
-                      className={`px-3 py-2 text-sm font-medium rounded-md capitalize transition-colors ${
-                        filters.filter === filterName
-                          ? 'bg-blue-600 dark:bg-blue-500 text-white'
-                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
-                      }`}
-                    >
-                      {filterName}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <button
-                onClick={() => {
-                  setFilters({
-                    brightness: 100,
-                    contrast: 100,
-                    saturation: 100,
-                    rotation: 0,
-                    filter: 'none',
-                    volume: 1,
-                    bassBoost: 1,
-                    treble: 1
-                  });
-                }}
-                className="w-full px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                Reset All
-              </button>
-            </div>
           </div>
         )}
 
-        <button 
-          onClick={testTaskList}
-          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-        >
-          Test Task List
-        </button>
+        
       </div>
     </main>
   );
