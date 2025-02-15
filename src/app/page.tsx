@@ -43,6 +43,7 @@ export default function Home() {
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [generatingCaptions, setGeneratingCaptions] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [videoInformation, setVideoInformation] = useState<VideoInformation>({});
@@ -288,6 +289,86 @@ export default function Home() {
     }
   };
 
+  const handleGenerateCaptions = async () => {
+    if (!video) return;
+    setGeneratingCaptions(true);
+    
+    try {
+      // Create a copy of the video file in the python-layer/raw directory
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const response = await fetch('/api/save-video', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              filename: video.name,
+              data: reader.result
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to save video');
+          }
+
+          const captionsResponse = await fetch(`http://localhost:8000/generate-captions?filename=${video.name}`, {
+            method: 'POST',
+          });
+
+          if (!captionsResponse.ok) {
+            throw new Error('Failed to generate captions');
+          }
+
+          const result = await captionsResponse.json();
+          console.log('Captions result:', result);
+
+          // Update video source to the processed video
+          if (result.processed_file) {
+            if (videoUrl) {
+              URL.revokeObjectURL(videoUrl);
+            }
+            // Read the local file directly
+            const filePath = result.processed_file;
+            const response = await fetch('/api/read-video', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ filePath }),
+            });
+
+            if (!response.ok) {
+              throw new Error('Failed to read video file');
+            }
+
+            const videoBlob = await response.blob();
+            const newVideoUrl = URL.createObjectURL(videoBlob);
+            setVideoUrl(newVideoUrl);
+            
+            // Reset video state
+            if (videoRef.current) {
+              videoRef.current.currentTime = 0;
+            }
+            setCurrentTime(0);
+            setIsPlaying(false);
+          }
+        } catch (error) {
+          console.error('Error generating captions:', error);
+          console.log('Failed to generate captions');
+        }
+      };
+
+      reader.readAsDataURL(video);
+    } catch (error) {
+      console.error('Error generating captions:', error);
+      alert('Failed to generate captions');
+    } finally {
+      setGeneratingCaptions(false);
+    }
+  };
+
   const handleCleanup = async () => {
     if (!video) return;
     setCleanupProcessing(true);
@@ -494,6 +575,8 @@ export default function Home() {
         await handleReplaceVisuals();
       } else if (task.name === 'remove_unnecessary_audio') {
         await handleCleanup();
+      } else if (task.name === 'generate_captions') {
+        await handleGenerateCaptions();
       }
     }
 

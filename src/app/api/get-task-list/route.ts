@@ -10,7 +10,7 @@ type Operation = {
 
 const schema = z.object({
   generate_visuals: z.boolean(),
-  generate_text_overlay: z.boolean(),
+  generate_captions: z.boolean(),
   remove_unnecessary_audio: z.boolean(),
   trim_based_on_visuals: z.boolean(),
   add_background_music: z.boolean(),
@@ -36,8 +36,8 @@ export async function POST(request: Request) {
         description: 'Generate new visuals for the video with a text-to-video model.'
       },
       {
-        name: 'generate_text_overlay',
-        description: 'Generate a text overlay for the video.'
+        name: 'generate_captions',
+        description: 'Generate captions for the video.'
       },
       {
         name: 'remove_unnecessary_audio',
