@@ -44,3 +44,12 @@ next-env.d.ts
 *.mp3
 
 */__pycache__
+
+# Python virtual environments
+venv/
+.venv/
+env/
+.env/
+ENV/
+*.venv
+pyvenv.cfg
