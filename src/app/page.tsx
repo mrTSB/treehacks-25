@@ -25,6 +25,11 @@ interface VideoFilters {
   treble?: number;
 }
 
+type Operation = {
+  name: string;
+  description: string;
+};
+
 export default function Home() {
   const [video, setVideo] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState<string>('');
@@ -50,6 +55,7 @@ export default function Home() {
   });
   const [cleanupProcessing, setCleanupProcessing] = useState(false);
   const [replacingVisuals, setReplacingVisuals] = useState(false);
+  const [tasks, setTasks] = useState<Operation[]>([]);
 
   const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -425,6 +431,27 @@ export default function Home() {
       setReplacingVisuals(false);
     }
   };
+
+  const testTaskList = async () => {
+    const userPrompt = "I want to trim my video to remove unnecessary parts and add some background music"
+    
+    try {
+      const response = await fetch('/api/get-task-list', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userPrompt }),
+      })
+      
+      const data = await response.json()
+      console.log(data.tasks)
+      setTasks(data.tasks)
+      console.log('Received tasks:', data.tasks)
+    } catch (error) {
+      console.error('Error testing task list:', error)
+    }
+  }
 
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -910,6 +937,13 @@ export default function Home() {
             </div>
           </div>
         )}
+
+        <button 
+          onClick={testTaskList}
+          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+        >
+          Test Task List
+        </button>
       </div>
     </main>
   );
