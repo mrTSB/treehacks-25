@@ -295,5 +295,41 @@ def main():
             process_video(video_file)
 
 
+def get_transcript(video_path, filter_llm=False):
+    """
+    Extract and transcribe audio from a video file, returning the filtered transcription.
+    
+    Args:
+        video_path (str): Path to the video file
+        
+    Returns:
+        tuple: (transcriptions, duration) where:
+            - transcriptions: List of dictionaries containing filtered transcription segments
+            - duration: Float representing video duration in seconds
+    """
+    # Get video duration
+    video = VideoFileClip(video_path)
+    duration = video.duration
+    video.close()
+
+    # Create temporary audio file
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as temp_audio:
+        # Extract audio from video
+        extract_audio(video_path, temp_audio.name)
+        
+        # Load audio and detect segments
+        audio = AudioSegment.from_file(temp_audio.name)
+        raw_segments = detect_segments(audio, chunk_ms=100)
+        
+        # Transcribe segments
+        transcriptions = transcribe_segments(audio, raw_segments)
+        
+        # Filter transcription using LLM
+        if filter_llm:
+            transcriptions = get_llm_suggestion(transcriptions)
+        
+        return transcriptions, duration
+
+
 if __name__ == "__main__":
     main()
