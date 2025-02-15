@@ -41,3 +41,5 @@ yarn-error.log*
 next-env.d.ts
 
 *.mp4
+
+*/__pycache__
