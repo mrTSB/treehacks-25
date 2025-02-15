@@ -32,35 +32,35 @@ export async function POST(request: Request) {
     // Define the complete list of available operations.
     const taskList: Operation[] = [
       {
-        name: 'Generate Visuals',
+        name: 'generate_visuals',
         description: 'Generate new visuals for the video with a text-to-video model.'
       },
       {
-        name: 'Generate Text Overlay',
+        name: 'generate_text_overlay',
         description: 'Generate a text overlay for the video.'
       },
       {
-        name: 'Remove Unnecessary Audio',
+        name: 'remove_unnecessary_audio',
         description: 'Look for any audio that is repeated or not needed and remove it.'
       },
       {
-        name: 'Trim Based on Visuals',
+        name: 'trim_based_on_visuals',
         description: 'Analyze the video frames and remove unnecessary parts.'
       },
       {
-        name: 'Add Background Music',
+        name: 'add_background_music',
         description: 'Add background music to the video.'
       },
       {
-        name: 'Generate Voiceover',
+        name: 'generate_voiceover',
         description: 'Generate a voiceover for the video.'
       },
       {
-        name: 'Adjust Audio Levels',
+        name: 'adjust_audio_levels',
         description: 'Adjust the audio levels of the video.'
       },
       {
-        name: 'Add Sound Effects',  
+        name: 'add_sound_effects',  
         description: 'Add sound effects to the video.'
       },
     ]
@@ -97,9 +97,13 @@ Return a JSON array of objects with two keys:
     // Extract the parsed output and handle possible null
     const operationsDecision = completion.choices[0].message.parsed
 
-    console.log(operationsDecision)
+    for (const task of taskList) {
+      if (operationsDecision && operationsDecision[task.name as keyof typeof operationsDecision]) {
+        tasksToPerform.push(task)
+      }
+    }
 
-    return NextResponse.json({ tasks: operationsDecision }, { status: 200 })
+    return NextResponse.json({ tasks: tasksToPerform }, { status: 200 })
   } catch (error) {
     console.error(error)
     return NextResponse.json(
