@@ -5,8 +5,8 @@ import { useState, useRef, useEffect } from 'react';
 function formatTime(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  const secs = seconds % 60;
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toFixed(3)}`;
 }
 
 function parseTimeToSeconds(timeStr: string): number {
@@ -215,19 +215,25 @@ export default function Home() {
     };
   }, [videoUrl]);
 
-  const startTimePercentage = (parseTimeToSeconds(startTime) / duration) * 100;
-  const endTimePercentage = (parseTimeToSeconds(endTime) / duration) * 100;
   const currentTimePercentage = (currentTime / duration) * 100;
 
-  const handleCutVideo = async () => {
+  const handleCutVideo = async (download: boolean = true) => {
     if (!video) return;
     setProcessing(true);
     
     try {
       const formData = new FormData();
       formData.append('video', video);
-      formData.append('startTime', startTime);
-      formData.append('endTime', endTime);
+      // Create cuts array with single cut
+      const cuts = [{
+        cutStartTime: 0,
+        cutEndTime: parseTimeToSeconds(startTime)
+      },
+      {
+        cutStartTime: parseTimeToSeconds(endTime),
+        cutEndTime: duration
+      }];
+      formData.append('cuts', JSON.stringify(cuts));
       formData.append('filters', JSON.stringify(filters));
 
       const response = await fetch('/api/cut-video', {
@@ -238,13 +244,23 @@ export default function Home() {
       if (response.ok) {
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'trimmed-video.mp4';
-        document.body.appendChild(a);
-        a.click();
-        URL.revokeObjectURL(url);
-        document.body.removeChild(a);
+        if (download) {
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'trimmed-video.mp4';
+          document.body.appendChild(a);
+          a.click();
+          URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        } else {
+          setVideo(new File([blob], 'trimmed-video.mp4', { type: 'video/mp4' }));
+          setVideoUrl(url);
+          if (videoRef.current) {
+            videoRef.current.currentTime = 0;
+          }
+          setCurrentTime(0);
+          setIsPlaying(false);
+        }
       }
     } catch (error) {
       console.error('Error cutting video:', error);
@@ -269,12 +285,6 @@ export default function Home() {
         videoRef.current.play();
       }
       setIsPlaying(!isPlaying);
-    }
-  };
-
-  const handleSeek = (seconds: number) => {
-    if (videoRef.current) {
-      videoRef.current.currentTime = Math.max(0, Math.min(videoRef.current.currentTime + seconds, duration));
     }
   };
 
@@ -475,15 +485,17 @@ export default function Home() {
     
     const tasks = data.tasks;
 
-    let message = "";
-
     for (const task of tasks) {
-      message += `Performing ${task.name}: ${task.description}\n`;
-    }
+      const message =`Performing ${task.name}: ${task.description}`;
+      const aiMessage = { text: message, sender: 'ai' as const };
+      setMessages(prev => [...prev, aiMessage]);
 
-    // Simulate AI response (replace with actual API call)
-    const aiMessage = { text: message, sender: 'ai' as const };
-    setMessages(prev => [...prev, aiMessage]);
+      if (task.name === 'generate_visuals') {
+        await handleReplaceVisuals();
+      } else if (task.name === 'remove_unnecessary_audio') {
+        await handleCleanup();
+      }
+    }
 
     // Scroll to bottom
     if (chatContainerRef.current) {
@@ -622,7 +634,7 @@ export default function Home() {
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">AI Assistant</h3>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={handleCutVideo}
+                    onClick={() => handleCutVideo(true)}
                     disabled={processing}
                     className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-blue-600 dark:bg-blue-500 rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                   >
