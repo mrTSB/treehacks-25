@@ -48,6 +48,7 @@ export default function Home() {
     filter: 'none',
     volume: 1
   });
+  const [cleanupProcessing, setCleanupProcessing] = useState(false);
 
   const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -245,6 +246,86 @@ export default function Home() {
   const handleSeek = (seconds: number) => {
     if (videoRef.current) {
       videoRef.current.currentTime = Math.max(0, Math.min(videoRef.current.currentTime + seconds, duration));
+    }
+  };
+
+  const handleCleanup = async () => {
+    if (!video) return;
+    setCleanupProcessing(true);
+    
+    try {
+      // Create a copy of the video file in the python-layer/raw directory
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const response = await fetch('/api/save-video', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              filename: video.name,
+              data: reader.result
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to save video');
+          }
+
+          const cleanupResponse = await fetch(`http://localhost:8000/upload-video?filename=${video.name}`, {
+            method: 'POST',
+          });
+
+          if (!cleanupResponse.ok) {
+            throw new Error('Failed to process video');
+          }
+
+          const result = await cleanupResponse.json();
+          console.log('Cleanup result:', result);
+
+          // Update video source to the processed video
+          if (result.processed_file) {
+            if (videoUrl) {
+              URL.revokeObjectURL(videoUrl);
+            }
+            // Read the local file directly
+            const filePath = result.processed_file;
+            const response = await fetch('/api/read-video', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ filePath }),
+            });
+
+            if (!response.ok) {
+              throw new Error('Failed to read video file');
+            }
+
+            const videoBlob = await response.blob();
+            const newVideoUrl = URL.createObjectURL(videoBlob);
+            setVideoUrl(newVideoUrl);
+            
+            // Reset video state
+            if (videoRef.current) {
+              videoRef.current.currentTime = 0;
+            }
+            setCurrentTime(0);
+            setIsPlaying(false);
+          }
+        } catch (error) {
+          console.error('Error during cleanup:', error);
+          console.log('Failed to clean up video');
+        }
+      };
+
+      reader.readAsDataURL(video);
+    } catch (error) {
+      console.error('Error during cleanup:', error);
+      alert('Failed to clean up video');
+    } finally {
+      setCleanupProcessing(false);
     }
   };
 
@@ -480,6 +561,30 @@ export default function Home() {
                           </svg>
                           Remove
                         </button>
+                        
+                        <button
+                          onClick={handleCleanup}
+                          disabled={cleanupProcessing}
+                          className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-green-600 dark:bg-green-500 rounded-md hover:bg-green-700 dark:hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                        >
+                          {cleanupProcessing ? (
+                            <>
+                              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                              </svg>
+                              Cleaning...
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              Clean Up
+                            </>
+                          )}
+                        </button>
+                        
                         <button
                           onClick={handleCutVideo}
                           disabled={processing}
