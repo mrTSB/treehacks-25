@@ -49,6 +49,7 @@ export default function Home() {
     volume: 1
   });
   const [cleanupProcessing, setCleanupProcessing] = useState(false);
+  const [replacingVisuals, setReplacingVisuals] = useState(false);
 
   const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -329,6 +330,102 @@ export default function Home() {
     }
   };
 
+  const handleReplaceVisuals = async () => {
+    if (!video) return;
+    setReplacingVisuals(true);
+    
+    try {
+      // Create a copy of the video file in the python-layer/raw directory
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const response = await fetch('/api/save-video', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              filename: video.name,
+              data: reader.result
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to save video');
+          }
+
+          const createResponse = await fetch(`http://localhost:8000/create-video?filename=${video.name}`, {
+            method: 'POST',
+          });
+
+          if (!createResponse.ok) {
+            throw new Error('Failed to process video');
+          }
+
+          const result = await createResponse.json();
+          console.log('Replace visuals result:', result);
+
+          // Get the generated video and combine with original audio
+          if (result.processed_file) {
+            // Read the generated video file
+            const generatedVideoResponse = await fetch('/api/read-video', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ filePath: result.processed_file }),
+            });
+
+            if (!generatedVideoResponse.ok) {
+              throw new Error('Failed to read generated video file');
+            }
+
+            // Create form data with both videos
+            const formData = new FormData();
+            formData.append('videoSource', await generatedVideoResponse.blob(), 'generated-video.mp4');
+            formData.append('audioSource', video, 'original-video.mp4');
+
+            // Combine video and audio
+            const combineResponse = await fetch('/api/combine-video-audio', {
+              method: 'POST',
+              body: formData,
+            });
+
+            if (!combineResponse.ok) {
+              throw new Error('Failed to combine video and audio');
+            }
+
+            // Update video with combined result
+            if (videoUrl) {
+              URL.revokeObjectURL(videoUrl);
+            }
+            const combinedVideoBlob = await combineResponse.blob();
+            const newVideoUrl = URL.createObjectURL(combinedVideoBlob);
+            setVideoUrl(newVideoUrl);
+            setVideo(new File([combinedVideoBlob], 'combined-video.mp4', { type: 'video/mp4' }));
+            
+            // Reset video state
+            if (videoRef.current) {
+              videoRef.current.currentTime = 0;
+            }
+            setCurrentTime(0);
+            setIsPlaying(false);
+          }
+        } catch (error) {
+          console.error('Error during visual replacement:', error);
+          console.log('Failed to replace visuals');
+        }
+      };
+
+      reader.readAsDataURL(video);
+    } catch (error) {
+      console.error('Error during visual replacement:', error);
+      alert('Failed to replace visuals');
+    } finally {
+      setReplacingVisuals(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="max-w-[1600px] mx-auto p-4 sm:p-6">
@@ -581,6 +678,29 @@ export default function Home() {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                               </svg>
                               Clean Up
+                            </>
+                          )}
+                        </button>
+                        
+                        <button
+                          onClick={handleReplaceVisuals}
+                          disabled={replacingVisuals}
+                          className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-purple-600 dark:bg-purple-500 rounded-md hover:bg-purple-700 dark:hover:bg-purple-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                        >
+                          {replacingVisuals ? (
+                            <>
+                              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                              </svg>
+                              Replacing...
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                              Replace Visuals
                             </>
                           )}
                         </button>

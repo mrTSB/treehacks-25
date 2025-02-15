@@ -1,4 +1,5 @@
 import os
+import random
 from lumaai import LumaAI
 from dotenv import load_dotenv
 from refiner import get_transcript
@@ -16,14 +17,32 @@ def optimize_segments(transcript, duration):
     if not transcript:
         return transcript
     
-    # For all segments except the last one
-    for i in range(len(transcript) - 1):
-        transcript[i]["end"] = transcript[i + 1]["start"]
-    transcript[-1]["end"] = duration
+    # Create new segments of 5 seconds each
+    new_segments = []
+    current_time = 0
     
-    return transcript
+    while current_time < duration:
+        # Find all transcript segments that overlap with current 5-second window
+        segment_end = min(current_time + 5, duration)
+        overlapping_text = []
+        
+        for segment in transcript:
+            # Check if segment overlaps with current window
+            if segment["start"] < segment_end and segment["end"] > current_time:
+                overlapping_text.append(segment["text"])
+        
+        if overlapping_text:
+            new_segments.append({
+                "start": current_time,
+                "end": segment_end,
+                "text": " ".join(overlapping_text)
+            })
+        
+        current_time += 5
+    
+    return new_segments
 
-def create_video(video_path):
+def generate_video(video_path):
     transcript, duration = get_transcript(video_path)
     transcript = optimize_segments(transcript, duration)
     
@@ -72,7 +91,8 @@ def create_video(video_path):
     os.makedirs("generated_videos", exist_ok=True)
     
     # Save the final video
-    output_path = os.path.join("generated_videos", os.path.basename(video_path))
+    generate_hash = ''.join(random.choices('0123456789abcdef', k=8))
+    output_path = os.path.join("generated_videos", f"{generate_hash}.mp4")
     final_video.write_videofile(output_path)
     
     # Clean up temporary files
@@ -80,7 +100,8 @@ def create_video(video_path):
         clip.close()
     for i in range(len(video_clips)):
         os.remove(f"temp_{i}.mp4")
+        
+    return output_path
 
 if __name__ == "__main__":
-    create_video("edited/IMG_4808.mp4")
-
+    generate_video("raw/clipped.mp4")
