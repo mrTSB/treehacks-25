@@ -30,6 +30,10 @@ type Operation = {
   description: string;
 };
 
+type VideoInformation = {
+  [timestamp: string]: string;
+};
+
 export default function Home() {
   const [video, setVideo] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState<string>('');
@@ -39,6 +43,9 @@ export default function Home() {
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState(0);
+  const [videoInformation, setVideoInformation] = useState<VideoInformation>({});
   const videoRef = useRef<HTMLVideoElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const [filters, setFilters] = useState<VideoFilters>({
@@ -55,7 +62,99 @@ export default function Home() {
   const [newMessage, setNewMessage] = useState('');
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const analyzeVideoFrames = async (video: HTMLVideoElement) => {
+    setIsAnalyzing(true);
+    setAnalysisProgress(0);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    console.log('Starting video analysis...');
+    console.log('Video duration:', video.duration);
+
+    // Set canvas size to match video dimensions
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    console.log('Canvas dimensions:', canvas.width, 'x', canvas.height);
+
+    // Capture frames every 0.5 seconds
+    const frameInterval = 0.5; // 0.5 second between frames
+    const totalFrames = Math.floor(video.duration / frameInterval);
+    const newVideoInformation: VideoInformation = {};
+
+    console.log('Total frames to process:', totalFrames);
+
+    // Process frames in batches of 5 with delays between batches
+    const batchSize = 5;
+    const batches = Math.ceil(totalFrames / batchSize);
+    console.log('Number of batches:', batches);
+
+    for (let batch = 0; batch < batches; batch++) {
+      console.log(`Processing batch ${batch + 1}/${batches}`);
+      const batchStart = batch * batchSize;
+      const batchEnd = Math.min(batchStart + batchSize, totalFrames);
+
+      // Process frames in current batch
+      for (let i = batchStart; i < batchEnd; i++) {
+        // Set video time to current frame
+        const currentTime = i * frameInterval;
+        video.currentTime = currentTime;
+        console.log(`Processing frame at ${currentTime.toFixed(1)}s`);
+
+        // Wait for the video to update to the new time
+        await new Promise<void>((resolve) => {
+          const handleSeeked = () => {
+            video.removeEventListener('seeked', handleSeeked);
+            resolve();
+          };
+          video.addEventListener('seeked', handleSeeked);
+        });
+
+        // Draw the current frame to canvas
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Get the frame as a base64 image
+        const imageData = canvas.toDataURL('image/jpeg', 0.8);
+
+        try {
+          // Send frame to Gemini API
+          const response = await fetch('/api/analyze-frame', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ image: imageData }),
+          });
+
+          if (response.ok) {
+            const { description } = await response.json();
+            newVideoInformation[currentTime.toFixed(1)] = description;
+            console.log(`Frame ${currentTime.toFixed(1)}s description:`, description);
+          }
+        } catch (error) {
+          console.error('Error analyzing frame:', error);
+        }
+
+        // Update progress
+        const progress = ((i + 1) / totalFrames) * 100;
+        setAnalysisProgress(progress);
+        console.log(`Progress: ${Math.round(progress)}%`);
+      }
+
+      // Add delay between batches to avoid rate limiting
+      if (batch < batches - 1) {
+        console.log('Waiting between batches...');
+        await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay between batches
+      }
+    }
+
+    console.log('Video analysis complete!');
+    console.log('Final video information:', newVideoInformation);
+    setVideoInformation(newVideoInformation);
+    setIsAnalyzing(false);
+  };
+
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       if (videoUrl) {
@@ -66,6 +165,19 @@ export default function Home() {
       setVideoUrl(newVideoUrl);
       setStartTime('00:00:00');
       setEndTime('00:00:00');
+
+      // Create a temporary video element to analyze frames
+      const tempVideo = document.createElement('video');
+      tempVideo.src = newVideoUrl;
+
+      // Wait for video metadata to load
+      await new Promise<void>((resolve) => {
+        tempVideo.addEventListener('loadedmetadata', () => resolve());
+        tempVideo.load();
+      });
+
+      // Start frame analysis
+      await analyzeVideoFrames(tempVideo);
     }
   };
 
@@ -382,6 +494,27 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="max-w-[1600px] mx-auto p-4 sm:p-6">
+        {/* Analysis Overlay */}
+        {isAnalyzing && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white text-center">
+                  Analyzing Video
+                </h3>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+                  <div
+                    className="bg-blue-600 dark:bg-blue-500 h-2.5 rounded-full transition-all duration-300"
+                    style={{ width: `${analysisProgress}%` }}
+                  />
+                </div>
+                <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
+                  {Math.round(analysisProgress)}% complete
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
         {!video ? (
           <div className="max-w-2xl mx-auto">
             <div className="border border-dashed border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800/50 shadow-sm">
