@@ -46,6 +46,8 @@ next-env.d.ts
 */__pycache__
 
 # Python virtual environments
+venvlayerone/
+venvlayerthree/
 venv/
 .venv/
 env/
