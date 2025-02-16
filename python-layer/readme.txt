@@ -1,9 +1,9 @@
 To get started:
 
-python -m venv venv
+python -m venv venvlayerone
 
 # On Windows:
-venv\Scripts\activate
+venvlayerone\Scripts\activate
 # On Unix or MacOS:
 source venv/bin/activate
 
