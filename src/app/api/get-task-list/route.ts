@@ -12,13 +12,14 @@ type Operation = {
 
 const schema = z.object({
   generate_visuals: z.boolean(),
-  generate_text_overlay: z.boolean(),
+  generate_captions: z.boolean(),
   remove_unnecessary_audio: z.boolean(),
   trim_based_on_visuals: z.boolean(),
   add_background_music: z.boolean(),
   generate_voiceover: z.boolean(),
   adjust_audio_levels: z.boolean(),
   add_sound_effects: z.boolean(),
+  generate_podcast_clip: z.boolean(),
 })
 
 /**
@@ -39,8 +40,8 @@ export async function POST(request: Request) {
         user_description: 'I will create new visual content for your video using AI technology, transforming your ideas into engaging visuals.'
       },
       {
-        name: 'generate_text_overlay',
-        description: 'Generate a text overlay for the video.',
+        name: 'generate_captions',
+        description: 'Generate captions for the video.',
         user_description: 'I will add text overlays to your video, such as captions, titles, or key information that enhances your video.'
       },
       {
@@ -72,6 +73,11 @@ export async function POST(request: Request) {
         name: 'add_sound_effects',  
         description: 'Add sound effects to the video.',
         user_description: 'I will enhance your video with appropriate sound effects to create a more immersive experience.'
+      },
+      {
+        name: 'generate_podcast_clip',
+        description: 'Generate a podcast-style clip for the video.',
+        user_description: 'I will create a podcast-style clip for your video content.'
       },
     ]
 

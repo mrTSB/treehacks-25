@@ -1,0 +1,17 @@
+fastapi==0.115.8
+uvicorn==0.34.0
+git+https://github.com/openai/whisper.git
+python-dotenv==1.0.1
+elevenlabs==1.51.0
+httpx==0.27.2
+openai==1.63.0
+pydub==0.25.1
+moviepy==1.0.3
+opencv-python==4.9.0.80
+dlib==19.24.2
+face-recognition==1.3.0
+av==14.1.0
+matplotlib==3.10.0
+numpy<2.0
+clipsai==0.2.1
+git+https://github.com/m-bain/whisperx.git

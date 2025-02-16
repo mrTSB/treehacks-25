@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 from refiner import process_video
 from create_video import generate_video
-
+from captions import generate_subtitled_video
 app = FastAPI()
 
 # Update your allowed origins to include your development domain only
@@ -67,3 +67,19 @@ async def create_video(filename: str):
         }
     except Exception as e:
         return {"error": f"Error creating video: {str(e)}"}
+    
+@app.post("/generate-captions")
+async def generate_captions(filename: str):
+    if not filename.lower().endswith('.mp4'):
+        return {"error": "Only MP4 files are allowed"}
+    
+    file_path = os.path.join("raw", filename)
+    try:
+        output_path = generate_subtitled_video(file_path)
+        return {
+            "message": "Subtitled video created successfully",
+            "original_file": filename,
+            "processed_file": output_path
+        }
+    except Exception as e:
+        return {"error": f"Error generating captions: {str(e)}"}
