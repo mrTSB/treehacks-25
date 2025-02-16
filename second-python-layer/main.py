@@ -1,11 +1,8 @@
-import os
-import uuid
-import subprocess
 from dotenv import load_dotenv
 from elevenlabs.client import ElevenLabs
 from openai import OpenAI
 import whisper
-from fastapi import FastAPI, Body
+from fastapi import FastAPI, Body, HTTPException
 from fastapi.responses import FileResponse
 from moviepy.editor import VideoFileClip, AudioFileClip
 from pydub import AudioSegment
@@ -16,6 +13,14 @@ import threading
 import face_recognition
 import cv2
 from fastapi.middleware.cors import CORSMiddleware
+import boto3
+import requests
+from pathlib import Path
+import time
+import os
+import subprocess
+import uuid
+from lumaai import LumaAI
 
 app = FastAPI()
 
@@ -484,6 +489,158 @@ def get_clip_status(task_id: str):
                 "result": task_info["result"]
             }
         return {"task_id": task_id, "status": "not found", "result": None}
+
+OUTPUT_DIR = "extended_videos"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# Initialize Boto3 S3 Client for AWS S3
+s3_client = boto3.client(
+    "s3",
+    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+    region_name=os.getenv('AWS_REGION')
+)
+
+class VideoExtendRequest(BaseModel):
+    video_path: str
+    prompt: str  # For AI-based extension (not used in FFmpeg directly)
+    duration: int
+
+# Add after VideoExtendRequest class
+CREATED_DIR = "created"
+os.makedirs(CREATED_DIR, exist_ok=True)
+
+@app.post("/extend_video/")
+def extend_video(request: VideoExtendRequest):
+    """Use the last frame from the video to extend it with a prompt and then stitch it to the original video."""
+    video_path = Path(request.video_path)
+    if not video_path.exists():
+        raise HTTPException(status_code=404, detail="Video file not found")
+
+    frame_uuid = str(uuid.uuid4())
+    output_frame = Path(OUTPUT_DIR) / f"{frame_uuid}.jpg"
+
+    # FFmpeg command to extract last frame
+    command = [
+        "ffmpeg", "-sseof", "-3", "-i", str(video_path),
+        "-update", "1", "-q:v", "2", str(output_frame)
+    ]
+
+    try:
+        subprocess.run(command, check=True)
+    except subprocess.CalledProcessError:
+        raise HTTPException(status_code=500, detail="FFmpeg processing failed")
+
+    try:
+        # Upload frame to AWS S3
+        s3_client.upload_file(
+            Filename=str(output_frame),
+            Bucket=os.getenv("AWS_BUCKET_NAME"),
+            Key=f"{frame_uuid}.jpg",
+            ExtraArgs={"ContentType": "image/jpeg"}
+        )
+
+        s3_url = f"https://{os.getenv('AWS_BUCKET_NAME')}.s3.{os.getenv('AWS_REGION')}.amazonaws.com/{frame_uuid}.jpg"
+
+        print(s3_url)
+        # Initialize Luma AI client
+        luma = LumaAI(auth_token=os.getenv("LUMA_API_KEY"))
+
+        # try:
+        #     # Create generation using Luma AI
+        #     generation = luma.generations.create(
+        #         prompt=request.prompt,
+        #         model="ray-2",
+        #         keyframes={
+        #             "frame0": {
+        #                 "type": "image",
+        #                 "url": s3_url
+        #             }
+        #         }
+        #     )
+        # except Exception as luma_error:
+        #     raise HTTPException(
+        #         status_code=500,
+        #         detail=f"Luma AI generation creation failed: {str(luma_error)}"
+        #     )
+
+        generation = luma.generations.create(
+            prompt=request.prompt,
+            model="ray-2",
+            duration=f"5s",
+            keyframes={
+                "frame0": {
+                    "type": "image",
+                    "url": s3_url
+                }
+            }
+        )
+        
+        completed = False
+        while not completed:
+            generation = luma.generations.get(generation.id)
+            if generation.state == "completed":
+                completed = True
+            elif generation.state == "failed":
+                print(generation.failure_reason)
+                raise HTTPException(status_code=500, detail=f"Luma AI generation failed: {generation.failure}")
+            time.sleep(5)
+            
+        # Download the generated video
+        try:
+            output_video_path = Path(CREATED_DIR) / f"extended_{frame_uuid}.mp4"
+            video_url = generation.assets.video
+            
+            # Download video using requests
+            response = requests.get(video_url, stream=True)
+            response.raise_for_status()  # Raise exception for bad status codes
+            
+            with open(output_video_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:  # Filter out keep-alive chunks
+                        f.write(chunk)
+                        
+            # Combine original video with generated video
+            try:
+                import moviepy.editor as mp
+                
+                # Load the original video and generated video
+                original_video = mp.VideoFileClip(str(request.video_path))
+                generated_video = mp.VideoFileClip(str(output_video_path))
+                
+                # Concatenate the videos
+                final_video = mp.concatenate_videoclips([original_video, generated_video])
+                
+                # Create final output path
+                final_output_path = Path(CREATED_DIR) / f"combined_{frame_uuid}.mp4"
+                
+                # Write the combined video
+                final_video.write_videofile(str(final_output_path))
+                
+                # Clean up
+                original_video.close()
+                generated_video.close()
+                
+                # Remove the intermediate generated video
+                output_video_path.unlink()
+                
+                # Update output path to the combined video
+                output_video_path = final_output_path
+            except Exception as combine_error:
+                raise HTTPException(
+                    status_code=500, 
+                    detail=f"Failed to combine videos: {str(combine_error)}"
+                )
+
+            return str(output_video_path)
+        except requests.RequestException as download_error:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to download generated video: {str(download_error)}"
+            )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Video generation failed: {str(e)}")
 
 # For local debugging:
 if __name__ == "__main__":
