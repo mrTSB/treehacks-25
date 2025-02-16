@@ -206,18 +206,19 @@ def create_lut(config: LUTConfig, name: str = "custom") -> str:
         str: Path to the created LUT file
     """
     lut_size = 32  # Standard size for 3D LUT
-    output_file = f"{name.lower().replace(' ', '_')}.lut"
+    output_file = f"{name.lower().replace(' ', '_')}.cube"  # Use .cube extension for better compatibility
     
     with open(output_file, 'w') as f:
         # Write header
         f.write("# Created with create_lut.py\n")
         f.write(f"# Configuration: {config.model_dump_json()}\n")
-        f.write(f"LUT_3D_SIZE {lut_size}\n")
+        f.write("TITLE \"Custom LUT\"\n")
+        f.write(f"LUT_3D_SIZE {lut_size}\n\n")
         
         # Generate LUT entries
-        for r in range(lut_size):
+        for b in range(lut_size):
             for g in range(lut_size):
-                for b in range(lut_size):
+                for r in range(lut_size):
                     # Convert indices to normalized RGB values (0-1)
                     rgb = [x / (lut_size - 1) for x in (r, g, b)]
                     
@@ -229,6 +230,9 @@ def create_lut(config: LUTConfig, name: str = "custom") -> str:
                     
                     # Convert back to display gamma
                     display = linear_to_rec709(graded, config)
+                    
+                    # Clamp values between 0 and 1
+                    display = [max(0.0, min(1.0, x)) for x in display]
                     
                     # Write the RGB values
                     f.write(f"{display[0]:.6f} {display[1]:.6f} {display[2]:.6f}\n")
@@ -246,68 +250,78 @@ def linear_to_rec709(rgb, config: LUTConfig):
     contrast = config.contrast
     brightness = config.brightness
     
-    # Apply contrast and brightness
-    rgb = [pow(x * brightness, contrast) for x in rgb]
-    
-    # Apply gamma correction
-    rgb = [pow(x, gamma) for x in rgb]
-    
-    return rgb
+    try:
+        # Apply contrast and brightness, ensure values stay positive
+        rgb = [max(0.0, x * brightness) for x in rgb]
+        rgb = [max(0.0, pow(x, contrast)) for x in rgb]
+        
+        # Apply gamma correction
+        rgb = [max(0.0, pow(x, gamma)) for x in rgb]
+        
+        return rgb
+    except ValueError:
+        # If we get any math errors, return a safe value
+        return [0.0, 0.0, 0.0]
 
 def enhance_video(rgb, config: LUTConfig):
     """Apply video enhancement based on configuration"""
-    # Calculate luminance
-    luminance = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
-    
-    # Apply highlight rolloff
-    highlight_factor = 1.0 - (1.0 - config.highlight_rolloff) * luminance
-    rgb = [x * highlight_factor for x in rgb]
-    
-    # Apply shadow lift
-    shadow_factor = config.shadow_lift * (1.0 - luminance)
-    rgb = [x + shadow_factor for x in rgb]
-    
-    # Apply black point
-    rgb = [max(x, config.black_point) for x in rgb]
-    
-    # Apply color temperature adjustment
-    temp_factor = (config.temperature - 5500) / 1000  # Normalize around 5500K
-    rgb = [
-        rgb[0] * (1 + 0.1 * temp_factor),  # Red
-        rgb[1],                            # Green
-        rgb[2] * (1 - 0.1 * temp_factor)   # Blue
-    ]
-    
-    # Apply saturation
-    if config.saturation != 1.0:
-        # Convert to HSL-like space for saturation adjustment
-        rgb_sum = sum(rgb)
-        if rgb_sum > 0:
-            rgb = [
-                ((x / rgb_sum) * config.saturation + (1 - config.saturation) / 3) * rgb_sum
-                for x in rgb
-            ]
-    
-    # Apply highlight warmth and shadow coolness
-    if luminance > 0.5:
-        # Warm highlights
-        factor = (luminance - 0.5) * 2 * (config.highlight_warmth - 1.0)
-        rgb[0] *= (1 + factor)  # Increase red
-        rgb[2] *= (1 - factor)  # Decrease blue
-    else:
-        # Cool shadows
-        factor = (0.5 - luminance) * 2 * (1.0 - config.shadow_coolness)
-        rgb[0] *= (1 - factor)  # Decrease red
-        rgb[2] *= (1 + factor)  # Increase blue
-    
-    return rgb
+    try:
+        # Calculate luminance
+        luminance = max(0.0, 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2])
+        
+        # Apply highlight rolloff
+        highlight_factor = 1.0 - (1.0 - config.highlight_rolloff) * luminance
+        rgb = [max(0.0, x * highlight_factor) for x in rgb]
+        
+        # Apply shadow lift
+        shadow_factor = config.shadow_lift * (1.0 - luminance)
+        rgb = [max(0.0, x + shadow_factor) for x in rgb]
+        
+        # Apply black point
+        rgb = [max(x, config.black_point) for x in rgb]
+        
+        # Apply color temperature adjustment
+        temp_factor = (config.temperature - 5500) / 1000  # Normalize around 5500K
+        rgb = [
+            max(0.0, rgb[0] * (1 + 0.1 * temp_factor)),  # Red
+            rgb[1],                                       # Green
+            max(0.0, rgb[2] * (1 - 0.1 * temp_factor))   # Blue
+        ]
+        
+        # Apply saturation
+        if config.saturation != 1.0:
+            # Convert to HSL-like space for saturation adjustment
+            rgb_sum = sum(rgb)
+            if rgb_sum > 0:
+                rgb = [
+                    max(0.0, ((x / rgb_sum) * config.saturation + (1 - config.saturation) / 3) * rgb_sum)
+                    for x in rgb
+                ]
+        
+        # Apply highlight warmth and shadow coolness
+        if luminance > 0.5:
+            # Warm highlights
+            factor = (luminance - 0.5) * 2 * (config.highlight_warmth - 1.0)
+            rgb[0] = max(0.0, rgb[0] * (1 + factor))  # Increase red
+            rgb[2] = max(0.0, rgb[2] * (1 - factor))  # Decrease blue
+        else:
+            # Cool shadows
+            factor = (0.5 - luminance) * 2 * (1.0 - config.shadow_coolness)
+            rgb[0] = max(0.0, rgb[0] * (1 - factor))  # Decrease red
+            rgb[2] = max(0.0, rgb[2] * (1 + factor))  # Increase blue
+        
+        return rgb
+        
+    except (ValueError, ZeroDivisionError):
+        # If we get any math errors, return the input unchanged
+        return rgb
 
 def apply_lut(lut_file: str, input_video: str, output_video: str) -> bool:
     """
     Apply a LUT to a video using ffmpeg_lut.
     
     Args:
-        lut_file: Path to the LUT file
+        lut_file: Path to the LUT file (.cube format)
         input_video: Path to the input video
         output_video: Path to the output video
     
@@ -325,6 +339,11 @@ def apply_lut(lut_file: str, input_video: str, output_video: str) -> bool:
         
         if not os.access(ffmpeg_lut, os.X_OK):
             print(f"Error: {ffmpeg_lut} is not executable")
+            return False
+        
+        # Ensure the LUT file has .cube extension
+        if not lut_file.endswith('.cube'):
+            print(f"Error: LUT file must have .cube extension")
             return False
         
         # Run ffmpeg_lut command
