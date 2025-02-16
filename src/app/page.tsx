@@ -201,7 +201,7 @@ export default function Home() {
     };
   }, [videoUrl]);
 
-  const handleCutVideo = async (download: boolean = true) => {
+  const handleCutVideo = async (download: boolean = true, trimmingGuidance: string = '') => {
     if (!video) return;
     setProcessing(true);
     
@@ -209,14 +209,24 @@ export default function Home() {
       const formData = new FormData();
       formData.append('video', video);
       // Create cuts array with single cut
-      const cuts = [{
-        cutStartTime: 0,
-        cutEndTime: parseTimeToSeconds(startTime)
-      },
-      {
-        cutStartTime: parseTimeToSeconds(endTime),
-        cutEndTime: duration
-      }];
+      let cuts = [];
+      if (trimmingGuidance != "") {
+        const [startTimeStr, endTimeStr] = trimmingGuidance.split(',').map(t => t.trim());
+        cuts = [{
+          cutStartTime: parseTimeToSeconds(startTimeStr),
+          cutEndTime: parseTimeToSeconds(endTimeStr)
+        }];
+      } else {
+          cuts = [{
+            cutStartTime: 0,
+          cutEndTime: parseTimeToSeconds(startTime)
+        },
+        {
+          cutStartTime: parseTimeToSeconds(endTime),
+          cutEndTime: duration
+        }];
+      }
+      console.log(cuts);
       formData.append('cuts', JSON.stringify(cuts));
       formData.append('filters', JSON.stringify(filters));
 
@@ -224,6 +234,8 @@ export default function Home() {
         method: 'POST',
         body: formData,
       });
+
+      console.log(response);
 
       if (response.ok) {
         const blob = await response.blob();
@@ -870,7 +882,7 @@ export default function Home() {
       } else if (task.name === 'generate_voiceover') {
         await handleGenerateVoiceover();
       } else if (task.name === 'trim_based_on_visuals') {
-        console.log(task);
+        handleCutVideo(false, task.trimming_guidance);
       }
     }
 
