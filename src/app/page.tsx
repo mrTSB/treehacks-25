@@ -765,6 +765,44 @@ export default function Home() {
           if (!response.ok) {
             throw new Error('Failed to save video');
           }
+
+          // Get the last frame from the video
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) throw new Error('Could not get canvas context');
+
+          // Set canvas size to match video dimensions
+          canvas.width = videoRef.current?.videoWidth || 0;
+          canvas.height = videoRef.current?.videoHeight || 0;
+
+          // Draw the current frame to canvas
+          if (videoRef.current) {
+            ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+          }
+
+          // Get the frame as a base64 image
+          const imageData = canvas.toDataURL('image/jpeg', 0.8);
+
+          // Get extension suggestions using the last frame and video context
+          const extensionResponse = await fetch('/api/get-extension-prompt', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              image: imageData,
+              videoContext: JSON.stringify(videoInformation)
+            }),
+          });
+
+          console.log(extensionResponse);
+
+          if (!extensionResponse.ok) {
+            throw new Error('Failed to get extension suggestions');
+          }
+
+          const { suggestions } = await extensionResponse.json();
+          console.log('Extension suggestions:', suggestions);
   
           const extendResponse = await fetch(`http://0.0.0.0:8001/extend_video`, {
             method: 'POST',
@@ -773,7 +811,7 @@ export default function Home() {
             },
             body: JSON.stringify({ 
               video_path: `raw/${video.name}`,
-              prompt: "Continue the video in a similar style",
+              prompt: suggestions,
               duration: 5
             }),
           });
@@ -784,7 +822,7 @@ export default function Home() {
   
           const result = await extendResponse.json();
           console.log('Extend video result:', result);
-  
+
           if (result) {
             if (videoUrl) {
               URL.revokeObjectURL(videoUrl);
@@ -1078,8 +1116,10 @@ export default function Home() {
           handleSendMessage={handleSendMessage}
           newMessage={newMessage}
           setNewMessage={setNewMessage}
-        />
-      </div>
+          handleViralize={() => console.log("Viralize")}
+          handleExport={() => handleCutVideo(true)}
+          />
+        </div>
     </div>
   );
 }
