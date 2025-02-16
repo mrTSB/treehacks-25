@@ -11,14 +11,24 @@ from functools import lru_cache
 import pickle
 import hashlib
 from datetime import datetime
+from sentence_transformers import SentenceTransformer
 
 # Load environment variables
 load_dotenv()
 
-# Initialize Gemini
+# Initialize models
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-model = genai.GenerativeModel('gemini-pro')
-embedding_model = genai.GenerativeModel('embedding-001')
+generation_config = {
+    "temperature": 0.7,
+    "top_p": 1,
+    "top_k": 1,
+    "max_output_tokens": 2048,
+}
+
+generation_model = genai.GenerativeModel(model_name="models/gemini-pro",
+                                       generation_config=generation_config)
+# Initialize the sentence transformer model
+embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # Constants for chunking
 CHUNK_SIZE = 1000  # characters
@@ -27,6 +37,7 @@ MIN_CHUNK_SIZE = 100  # Minimum characters for a chunk to be considered valid
 INDEX_NAME = "viral_videos_knowledge"
 VECTORS_FILE = "pdf_vectors.pkl"
 PDF_HASH_FILE = "pdf_hashes.pkl"
+EMBEDDING_DIMENSION = 384  # MiniLM-L6-v2 embedding dimension
 
 # In-memory storage as fallback
 in_memory_docs = []
@@ -73,7 +84,7 @@ def setup_storage():
                     "mappings": {
                         "properties": {
                             "content": {"type": "text"},
-                            "embedding": {"type": "dense_vector", "dims": 768},
+                            "embedding": {"type": "dense_vector", "dims": EMBEDDING_DIMENSION},
                             "page_num": {"type": "integer"},
                             "chunk_num": {"type": "integer"}
                         }
@@ -211,9 +222,15 @@ def process_pdf(pdf_path: str) -> List[Dict]:
 
 @lru_cache(maxsize=1000)
 def get_embedding(text: str) -> List[float]:
-    """Get embeddings using Gemini with caching."""
-    result = embedding_model.embed_content(text)
-    return result.embedding
+    """Get embeddings using sentence-transformers with caching."""
+    try:
+        # Encode the text and convert to list
+        embedding = embedding_model.encode(text, convert_to_numpy=True).tolist()
+        return embedding
+    except Exception as e:
+        print(f"Error getting embedding: {str(e)}")
+        # Return a zero vector as fallback
+        return [0.0] * EMBEDDING_DIMENSION
 
 def index_documents():
     """Index all PDF documents in the pdfs directory."""
