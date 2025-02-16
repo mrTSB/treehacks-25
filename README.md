@@ -1,3 +1,9 @@
+# 🚨 DISCLAIMER: USE THE `ADENG` BRANCH 🚨
+
+**This project requires you to use the `adeng` branch.**  
+Make sure you switch to `adeng` before making any changes.  
+
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
