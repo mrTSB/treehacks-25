@@ -855,9 +855,16 @@ export default function Home() {
     const data = await response.json();
     const tasks = data.tasks;
 
+    console.log(tasks)
+
     if (tasks.length > 0) {
-      const task = tasks[0];
-      const message =`${task.user_description}`;
+      // Skip trim_based_on_visuals if there's another task available
+      let task = tasks[0];
+      if (task.name === 'trim_based_on_visuals' && tasks.length > 1) {
+        task = tasks[1];
+      }
+
+      const message = `${task.reason}`;  // Changed from task.user_description to task.reason
       const aiMessage = { text: message, sender: 'ai' as const };
       setMessages(prev => [...prev, aiMessage]);
 
@@ -964,7 +971,59 @@ export default function Home() {
       setProcessing(false);
     }
   }, [video, videoUrl]);
-  
+
+  const handleViralize = async () => {
+    if (!video || !videoInformation) return;
+    
+    try {
+      const response = await fetch('/api/handle-virality', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          videoInformation
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to process virality');
+      }
+
+      const result = await response.json();
+      const tasks = result.operations;
+
+      if (tasks.length > 0) {
+        // Skip trim_based_on_visuals if there's another task available
+        let task = tasks[0];
+        if (task.name === 'trim_based_on_visuals' && tasks.length > 1) {
+          task = tasks[1];
+        }
+
+        const message = `${task.reason}`;  // Changed from task.user_description to task.reason
+        const aiMessage = { text: message, sender: 'ai' as const };
+        setMessages(prev => [...prev, aiMessage]);
+
+        if (task.name === 'generate_visuals') {
+          await handleReplaceVisuals();
+        } else if (task.name === 'remove_unnecessary_audio') {
+          await handleCleanup();
+        } else if (task.name === 'generate_text_overlay') {
+          await handleGenerateCaptions();
+        } else if (task.name === 'generate_podcast_clip') {
+          await handleGeneratePodcastClip();
+        } else if (task.name === 'add_sound_effects') {
+          await handleGenerateSoundEffects();
+        } else if (task.name === 'extend_video') {
+          await handleExtendVideo();
+        } else if (task.name === 'generate_voiceover') {
+          await handleGenerateVoiceover();
+        }
+      }
+    } catch (error) {
+      console.error('Error processing virality:', error);
+    }
+  };
 
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -1173,6 +1232,16 @@ export default function Home() {
                 </>
               )}
             </button>
+            <button
+              onClick={handleViralize}
+              className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-pink-600 dark:bg-pink-500 rounded-md hover:bg-pink-700 dark:hover:bg-pink-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              Viralize
+            </button>
+            
                 </div>
               </div>
               
@@ -1223,6 +1292,7 @@ export default function Home() {
           </div>
         )}
       </div>
+      
     </main>
   );
 }
