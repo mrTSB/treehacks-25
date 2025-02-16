@@ -4,10 +4,10 @@ import path from 'path';
 
 export async function POST(request: Request) {
   try {
-    const { filePath } = await request.json();
+    const { filePath, pythonLayer } = await request.json();
     
     // Construct the full path to the video file
-    const fullPath = path.join(process.cwd(), 'python-layer', filePath);
+    const fullPath = path.join(process.cwd(), pythonLayer, filePath);
     
     // Check if file exists
     if (!fs.existsSync(fullPath)) {

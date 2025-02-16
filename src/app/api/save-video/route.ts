@@ -4,10 +4,10 @@ import path from 'path';
 
 export async function POST(request: Request) {
   try {
-    const { filename, data } = await request.json();
+    const { filename, data, pythonLayer } = await request.json();
     
     // Create the raw directory if it doesn't exist
-    const rawDir = path.join(process.cwd(), 'python-layer', 'raw');
+    const rawDir = path.join(process.cwd(), pythonLayer, 'raw');
     if (!fs.existsSync(rawDir)) {
       fs.mkdirSync(rawDir, { recursive: true });
     }

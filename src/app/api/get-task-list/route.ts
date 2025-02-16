@@ -17,6 +17,7 @@ const schema = z.object({
   generate_voiceover: z.boolean(),
   adjust_audio_levels: z.boolean(),
   add_sound_effects: z.boolean(),
+  generate_podcast_clip: z.boolean(),
 })
 
 /**
@@ -62,6 +63,10 @@ export async function POST(request: Request) {
       {
         name: 'add_sound_effects',  
         description: 'Add sound effects to the video.'
+      },
+      {
+        name: 'generate_podcast_clip',
+        description: 'Generate a podcast-style clip for the video.'
       },
     ]
 
