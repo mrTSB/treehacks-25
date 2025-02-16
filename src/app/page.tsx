@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 
 function formatTime(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
@@ -289,12 +289,11 @@ export default function Home() {
     }
   };
 
-  const handleGeneratePodcastClip = async () => {
+  const handleGeneratePodcastClip = useCallback(async () => {
     if (!video) return;
     setProcessing(true);
     
     try {
-      // Create a copy of the video file in the python-layer/raw directory
       const reader = new FileReader();
       reader.onload = async () => {
         try {
@@ -306,14 +305,14 @@ export default function Home() {
             body: JSON.stringify({
               filename: video.name,
               data: reader.result,
-              pythonLayer: 'second-python-layer'
+              pythonLayer: 'second-python-layer',
             }),
           });
-
+  
           if (!response.ok) {
             throw new Error('Failed to save video');
           }
-
+  
           const podcastResponse = await fetch(`http://localhost:8001/generate_podcast_clip`, {
             method: 'POST',
             headers: {
@@ -321,38 +320,40 @@ export default function Home() {
             },
             body: JSON.stringify({ video_path: `raw/${video.name}` }),
           });
-
+  
           if (!podcastResponse.ok) {
             throw new Error('Failed to generate podcast clip');
           }
-
+  
           const result = await podcastResponse.json();
           console.log('Podcast result:', result);
-
-          // Update video source to the processed video
+  
           if (result.processed_file) {
             if (videoUrl) {
               URL.revokeObjectURL(videoUrl);
             }
-            // Read the local file directly
+  
             const filePath = result.processed_file;
-            const response = await fetch('/api/read-video', {
+            const readResponse = await fetch('/api/read-video', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({ filePath, pythonLayer: 'second-python-layer' }),
             });
-
-            if (!response.ok) {
+  
+            if (!readResponse.ok) {
               throw new Error('Failed to read video file');
             }
-
-            const videoBlob = await response.blob();
+  
+            const videoBlob = await readResponse.blob();
             const newVideoUrl = URL.createObjectURL(videoBlob);
             setVideoUrl(newVideoUrl);
-            
-            // Reset video state
+  
+            // Update the video state with the processed File so that subsequent ops use the new file
+            const newVideoFile = new File([videoBlob], 'podcast-video.mp4', { type: video.type || 'video/mp4' });
+            setVideo(newVideoFile);
+  
             if (videoRef.current) {
               videoRef.current.currentTime = 0;
             }
@@ -364,7 +365,7 @@ export default function Home() {
           console.log('Failed to generate podcast clip');
         }
       };
-
+  
       reader.readAsDataURL(video);
     } catch (error) {
       console.error('Error generating podcast clip:', error);
@@ -372,14 +373,14 @@ export default function Home() {
     } finally {
       setProcessing(false);
     }
-  };
+  }, [video, videoUrl]);
 
-  const handleGenerateCaptions = async () => {
+  const handleGenerateCaptions = useCallback(async () => {
+    console.log('Generating captions');
     if (!video) return;
     setGeneratingCaptions(true);
     
     try {
-      // Create a copy of the video file in the python-layer/raw directory
       const reader = new FileReader();
       reader.onload = async () => {
         try {
@@ -394,46 +395,47 @@ export default function Home() {
               pythonLayer: 'python-layer'
             }),
           });
-
+  
           if (!response.ok) {
             throw new Error('Failed to save video');
           }
-
-          const captionsResponse = await fetch(`http://localhost:8000/generate-captions?filename=${video.name}`, {
+  
+          const captionsResponse = await fetch(`http://127.0.0.1:8000/generate-captions?filename=${video.name}`, {
             method: 'POST',
           });
-
+  
           if (!captionsResponse.ok) {
             throw new Error('Failed to generate captions');
           }
-
+  
           const result = await captionsResponse.json();
           console.log('Captions result:', result);
-
-          // Update video source to the processed video
+  
           if (result.processed_file) {
             if (videoUrl) {
               URL.revokeObjectURL(videoUrl);
             }
-            // Read the local file directly
             const filePath = result.processed_file;
-            const response = await fetch('/api/read-video', {
+            const readResponse = await fetch('/api/read-video', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({ filePath, pythonLayer: 'python-layer' }),
             });
-
-            if (!response.ok) {
+  
+            if (!readResponse.ok) {
               throw new Error('Failed to read video file');
             }
-
-            const videoBlob = await response.blob();
+  
+            const videoBlob = await readResponse.blob();
             const newVideoUrl = URL.createObjectURL(videoBlob);
             setVideoUrl(newVideoUrl);
-            
-            // Reset video state
+  
+            // Update the video state with the processed file
+            const newVideoFile = new File([videoBlob], 'captioned-video.mp4', { type: video.type || 'video/mp4' });
+            setVideo(newVideoFile);
+  
             if (videoRef.current) {
               videoRef.current.currentTime = 0;
             }
@@ -445,7 +447,7 @@ export default function Home() {
           console.log('Failed to generate captions');
         }
       };
-
+  
       reader.readAsDataURL(video);
     } catch (error) {
       console.error('Error generating captions:', error);
@@ -453,14 +455,13 @@ export default function Home() {
     } finally {
       setGeneratingCaptions(false);
     }
-  };
+  }, [video, videoUrl]);
 
-  const handleCleanup = async () => {
+  const handleCleanup = useCallback(async () => {
     if (!video) return;
     setCleanupProcessing(true);
     
     try {
-      // Create a copy of the video file in the python-layer/raw directory
       const reader = new FileReader();
       reader.onload = async () => {
         try {
@@ -475,46 +476,47 @@ export default function Home() {
               pythonLayer: 'python-layer'
             }),
           });
-
+  
           if (!response.ok) {
             throw new Error('Failed to save video');
           }
-
+  
           const cleanupResponse = await fetch(`http://localhost:8000/upload-video?filename=${video.name}`, {
             method: 'POST',
           });
-
+  
           if (!cleanupResponse.ok) {
             throw new Error('Failed to process video');
           }
-
+  
           const result = await cleanupResponse.json();
           console.log('Cleanup result:', result);
-
-          // Update video source to the processed video
+  
           if (result.processed_file) {
             if (videoUrl) {
               URL.revokeObjectURL(videoUrl);
             }
-            // Read the local file directly
             const filePath = result.processed_file;
-            const response = await fetch('/api/read-video', {
+            const readResponse = await fetch('/api/read-video', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({ filePath, pythonLayer: 'python-layer' }),
             });
-
-            if (!response.ok) {
+  
+            if (!readResponse.ok) {
               throw new Error('Failed to read video file');
             }
-
-            const videoBlob = await response.blob();
+  
+            const videoBlob = await readResponse.blob();
             const newVideoUrl = URL.createObjectURL(videoBlob);
             setVideoUrl(newVideoUrl);
-            
-            // Reset video state
+  
+            // Update video state with the cleaned up file
+            const newVideoFile = new File([videoBlob], 'cleaned-video.mp4', { type: video.type || 'video/mp4' });
+            setVideo(newVideoFile);
+  
             if (videoRef.current) {
               videoRef.current.currentTime = 0;
             }
@@ -526,7 +528,7 @@ export default function Home() {
           console.log('Failed to clean up video');
         }
       };
-
+  
       reader.readAsDataURL(video);
     } catch (error) {
       console.error('Error during cleanup:', error);
@@ -534,9 +536,9 @@ export default function Home() {
     } finally {
       setCleanupProcessing(false);
     }
-  };
+  }, [video, videoUrl]);
 
-  const handleReplaceVisuals = async () => {
+  const handleReplaceVisuals = useCallback(async () => {
     if (!video) return;
     setReplacingVisuals(true);
     
@@ -631,9 +633,9 @@ export default function Home() {
     } finally {
       setReplacingVisuals(false);
     }
-  };
+  }, [video]);
 
-  const handleGenerateSoundEffects = async () => {
+  const handleGenerateSoundEffects = useCallback(async () => {
     console.log('Generating sound effects');
     if (!video) return;
     setProcessing(true);
@@ -653,12 +655,11 @@ export default function Home() {
               pythonLayer: 'second-python-layer'
             }),
           });
-
+  
           if (!response.ok) {
             throw new Error('Failed to save video');
           }
-
-          // First generate subtitles
+  
           const subtitledResponse = await fetch(`http://0.0.0.0:8001/generate_subtitled_video`, {
             method: 'POST',
             headers: {
@@ -666,18 +667,17 @@ export default function Home() {
             },
             body: JSON.stringify({ video_path: `raw/${video.name}` }),
           });
-
+  
           if (!subtitledResponse.ok) {
             throw new Error('Failed to generate subtitles');
           }
-
+  
           const subtitledResult = await subtitledResponse.json();
-          
+  
           if (!subtitledResult?.output_video) {
             throw new Error('Invalid subtitle generation response');
           }
-
-          // Then add sound effects based on the subtitles
+  
           const soundEffectsResponse = await fetch(`http://0.0.0.0:8001/generate_sound_effects_video`, {
             method: 'POST',
             headers: {
@@ -688,39 +688,39 @@ export default function Home() {
               srt_path: subtitledResult.output_video.replace('.mp4', '.srt')
             }),
           });
-
+  
           if (!soundEffectsResponse.ok) {
             throw new Error('Failed to add sound effects');
           }
-
+  
           const result = await soundEffectsResponse.json();
           console.log('Sound effects result:', result);
-
-          // Update video source to the processed video
+  
           if (result.output_video) {
             if (videoUrl) {
               URL.revokeObjectURL(videoUrl);
             }
-            // Read the local file directly
             const filePath = result.output_video;
-            console.log('File path:', filePath);
-            const response = await fetch('/api/read-video', {
+            const readResponse = await fetch('/api/read-video', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({ filePath, pythonLayer: 'second-python-layer' }),
             });
-
-            if (!response.ok) {
+  
+            if (!readResponse.ok) {
               throw new Error('Failed to read video file');
             }
-
-            const videoBlob = await response.blob();
+  
+            const videoBlob = await readResponse.blob();
             const newVideoUrl = URL.createObjectURL(videoBlob);
             setVideoUrl(newVideoUrl);
-            
-            // Reset video state
+  
+            // Update video state with the new file that has sound effects added
+            const newVideoFile = new File([videoBlob], 'sound-effects-video.mp4', { type: video.type || 'video/mp4' });
+            setVideo(newVideoFile);
+  
             if (videoRef.current) {
               videoRef.current.currentTime = 0;
             }
@@ -732,7 +732,7 @@ export default function Home() {
           console.log('Failed to generate sound effects');
         }
       };
-
+  
       reader.readAsDataURL(video);
     } catch (error) {
       console.error('Error generating sound effects:', error);
@@ -740,7 +740,97 @@ export default function Home() {
     } finally {
       setProcessing(false);
     }
-  };
+  }, [video, videoUrl]);
+
+  const handleExtendVideo = useCallback(async () => {
+    console.log('Extending video');
+    if (!video) return;
+    setProcessing(true);
+    
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const response = await fetch('/api/save-video', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              filename: video.name,
+              data: reader.result,
+              pythonLayer: 'second-python-layer'
+            }),
+          });
+  
+          if (!response.ok) {
+            throw new Error('Failed to save video');
+          }
+  
+          const extendResponse = await fetch(`http://0.0.0.0:8001/extend_video`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+              video_path: `raw/${video.name}`,
+              prompt: "Continue the video in a similar style",
+              duration: 5
+            }),
+          });
+  
+          if (!extendResponse.ok) {
+            throw new Error('Failed to extend video');
+          }
+  
+          const result = await extendResponse.json();
+          console.log('Extend video result:', result);
+  
+          if (result.output_video) {
+            if (videoUrl) {
+              URL.revokeObjectURL(videoUrl);
+            }
+            const filePath = result.output_video;
+            const readResponse = await fetch('/api/read-video', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ filePath, pythonLayer: 'second-python-layer' }),
+            });
+  
+            if (!readResponse.ok) {
+              throw new Error('Failed to read video file');
+            }
+  
+            const videoBlob = await readResponse.blob();
+            const newVideoUrl = URL.createObjectURL(videoBlob);
+            setVideoUrl(newVideoUrl);
+  
+            // Update video state with the extended video
+            const newVideoFile = new File([videoBlob], 'extended-video.mp4', { type: video.type || 'video/mp4' });
+            setVideo(newVideoFile);
+  
+            if (videoRef.current) {
+              videoRef.current.currentTime = 0;
+            }
+            setCurrentTime(0);
+            setIsPlaying(false);
+          }
+        } catch (error) {
+          console.error('Error extending video:', error);
+          console.log('Failed to extend video');
+        }
+      };
+  
+      reader.readAsDataURL(video);
+    } catch (error) {
+      console.error('Error extending video:', error);
+      alert('Failed to extend video');
+    } finally {
+      setProcessing(false);
+    }
+  }, [video, videoUrl]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -763,10 +853,10 @@ export default function Home() {
     });
 
     const data = await response.json();
-    
     const tasks = data.tasks;
 
-    for (const task of tasks) {
+    if (tasks.length > 0) {
+      const task = tasks[0];
       const message =`${task.user_description}`;
       const aiMessage = { text: message, sender: 'ai' as const };
       setMessages(prev => [...prev, aiMessage]);
@@ -775,12 +865,16 @@ export default function Home() {
         await handleReplaceVisuals();
       } else if (task.name === 'remove_unnecessary_audio') {
         await handleCleanup();
-      } else if (task.name === 'generate_captions') {
+      } else if (task.name === 'generate_text_overlay') {
         await handleGenerateCaptions();
       } else if (task.name === 'generate_podcast_clip') {
         await handleGeneratePodcastClip();
       } else if (task.name === 'add_sound_effects') {
         await handleGenerateSoundEffects();
+      } else if (task.name === 'extend_video') {
+        await handleExtendVideo();
+      } else if (task.name === 'generate_voiceover') {
+        await handleGenerateVoiceover();
       }
     }
 
@@ -789,6 +883,88 @@ export default function Home() {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   };
+
+  const handleGenerateVoiceover = useCallback(async () => {
+    if (!video) return;
+    setProcessing(true);
+    
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const response = await fetch('/api/save-video', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              filename: video.name,
+              data: reader.result,
+              pythonLayer: 'python-layer'
+            }),
+          });
+  
+          if (!response.ok) {
+            throw new Error('Failed to save video');
+          }
+  
+          const voiceoverResponse = await fetch(`http://localhost:8000/generate-voiceover?filename=${video.name}`, {
+            method: 'POST',
+          });
+  
+          if (!voiceoverResponse.ok) {
+            throw new Error('Failed to generate voiceover');
+          }
+  
+          const result = await voiceoverResponse.json();
+          console.log('Voiceover result:', result);
+  
+          if (result.processed_file) {
+            if (videoUrl) {
+              URL.revokeObjectURL(videoUrl);
+            }
+            const filePath = result.processed_file;
+            const readResponse = await fetch('/api/read-video', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ filePath, pythonLayer: 'python-layer' }),
+            });
+  
+            if (!readResponse.ok) {
+              throw new Error('Failed to read video file');
+            }
+  
+            const videoBlob = await readResponse.blob();
+            const newVideoUrl = URL.createObjectURL(videoBlob);
+            setVideoUrl(newVideoUrl);
+  
+            // Update video state with the processed file
+            const newVideoFile = new File([videoBlob], 'voiceover-video.mp4', { type: video.type || 'video/mp4' });
+            setVideo(newVideoFile);
+  
+            if (videoRef.current) {
+              videoRef.current.currentTime = 0;
+            }
+            setCurrentTime(0);
+            setIsPlaying(false);
+          }
+        } catch (error) {
+          console.error('Error generating voiceover:', error);
+          console.log('Failed to generate voiceover');
+        }
+      };
+  
+      reader.readAsDataURL(video);
+    } catch (error) {
+      console.error('Error generating voiceover:', error);
+      alert('Failed to generate voiceover');
+    } finally {
+      setProcessing(false);
+    }
+  }, [video, videoUrl]);
+  
 
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-900">

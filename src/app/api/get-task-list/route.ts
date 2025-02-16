@@ -20,6 +20,7 @@ const schema = z.object({
   adjust_audio_levels: z.boolean(),
   add_sound_effects: z.boolean(),
   generate_podcast_clip: z.boolean(),
+  extend_video: z.boolean(),
 })
 
 /**
@@ -79,6 +80,11 @@ export async function POST(request: Request) {
         description: 'Generate a podcast-style clip for the video.',
         user_description: 'I will create a podcast-style clip for your video content.'
       },
+      {
+        name: 'extend_video',
+        description: 'Extend the video with a prompt and then stitch it to the original video.',
+        user_description: 'I will generate extra content for the video.'
+      }
     ]
 
     // Initialize the OpenAI client.
@@ -96,10 +102,12 @@ export async function POST(request: Request) {
         {
           role: "system",
           content: `You are a video editing assistant.
-          Based on the user's prompt, decide which of the following operations should be performed.
+          Based on the user's prompt, decide which ONE operation is MOST relevant and should be performed.
+          All other operations should be marked as false.
           Return a JSON array of objects with two keys:
           "operation_name": a string corresponding to one of the following operations: ${taskList.map(t => t.name).join(', ')},
-          "perform": a boolean indicating whether the operation should be performed.`
+          "perform": a boolean indicating whether the operation should be performed.
+          IMPORTANT: Only ONE operation should be marked as true.`
         },
         { role: "user", content: userPrompt }
       ]
@@ -122,19 +130,20 @@ export async function POST(request: Request) {
         }
       }
 
-      // Verify the response with GPT-4
+      // Modify verification prompt to check for single operation
       const verificationMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
         {
           role: "system",
-          content: `You are a verification assistant. Review if the selected video editing operations make sense for the user's request. 
-          Return only "true" if the operations are correct, or "false" if they seem incorrect.`
+          content: `You are a verification assistant. Review if the selected single video editing operation is the most relevant for the user's request. 
+          Return only "true" if the operation is the most appropriate choice, or "false" if a different operation would be more suitable.
+          Remember: There should be exactly ONE operation selected.`
         },
         {
           role: "user",
           content: `User prompt: "${userPrompt}"
-          Selected operations: ${tasksToPerform.map(t => t.name).join(', ')}
+          Selected operation: ${tasksToPerform.map(t => t.name).join(', ')}
           
-          Are these operations correctly categorized? Reply with only true or false.`
+          Is this the most appropriate single operation? Reply with only true or false.`
         }
       ]
 

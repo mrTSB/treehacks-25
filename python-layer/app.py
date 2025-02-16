@@ -1,9 +1,11 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from refiner import process_video
 from create_video import generate_video
 from captions import generate_subtitled_video
+from voiceover import generate_voiceover
+
 app = FastAPI()
 
 # Update your allowed origins to include your development domain only
@@ -83,3 +85,29 @@ async def generate_captions(filename: str):
         }
     except Exception as e:
         return {"error": f"Error generating captions: {str(e)}"}
+    
+@app.post("/generate-voiceover")
+async def generate_voiceover_endpoint(filename: str):
+    """
+    Endpoint to generate a voiceover for a video file.
+    
+    Parameters:
+        filename (str): Name of the video file in the raw directory
+    
+    Returns:
+        dict: Contains the path to the processed video file
+    """
+    try:
+        input_path = os.path.join("raw", filename)
+        if not os.path.exists(input_path):
+            raise HTTPException(status_code=404, detail="Video file not found")
+            
+        processed_file = await generate_voiceover(input_path)
+        
+        return {
+            "status": "success",
+            "processed_file": processed_file
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
