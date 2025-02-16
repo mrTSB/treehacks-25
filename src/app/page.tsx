@@ -64,7 +64,6 @@ export default function Home() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const analyzeVideoFrames = async (video: HTMLVideoElement) => {
-    return
     setIsAnalyzing(true);
     setAnalysisProgress(0);
     const canvas = document.createElement('canvas');
