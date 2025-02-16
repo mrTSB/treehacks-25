@@ -6,6 +6,8 @@ import { zodResponseFormat } from "openai/helpers/zod"
 type Operation = {
     name: string;
     description: string;
+    trimming_guidance?: string;
+    user_description: string;
 }
 
 const schema = z.object({
@@ -27,79 +29,186 @@ const schema = z.object({
  */
 export async function POST(request: Request) {
   try {
-    const { userPrompt } = await request.json()
+    const { userPrompt, videoInformation } = await request.json()
 
     // Define the complete list of available operations.
     const taskList: Operation[] = [
       {
         name: 'generate_visuals',
-        description: 'Generate new visuals for the video with a text-to-video model.'
+        description: 'Generate new visuals for the video with a text-to-video model.',
+        user_description: 'I will create new visual content for your video using AI technology, transforming your ideas into engaging visuals.'
       },
       {
         name: 'generate_text_overlay',
-        description: 'Generate a text overlay for the video.'
+        description: 'Generate a text overlay for the video.',
+        user_description: 'I will add text overlays to your video, such as captions, titles, or key information that enhances your video.'
       },
       {
         name: 'remove_unnecessary_audio',
-        description: 'Look for any audio that is repeated or not needed and remove it.'
+        description: 'Look for any audio that is repeated or not needed and remove it.',
+        user_description: 'I will clean up your audio by removing any redundant sounds, silence, or unwanted background noise.'
       },
       {
         name: 'trim_based_on_visuals',
-        description: 'Analyze the video frames and remove unnecessary parts.'
+        description: 'Analyze the video frames and remove unnecessary parts.',
+        user_description: 'I will analyze your video content and trim accordingly.'
       },
       {
         name: 'add_background_music',
-        description: 'Add background music to the video.'
+        description: 'Add background music to the video.',
+        user_description: 'I will add appropriate background music to enhance the mood and engagement of your video.'
       },
       {
         name: 'generate_voiceover',
-        description: 'Generate a voiceover for the video.'
+        description: 'Generate a voiceover for the video.',
+        user_description: 'I will create a professional AI voiceover narration for your video content.'
       },
       {
         name: 'adjust_audio_levels',
-        description: 'Adjust the audio levels of the video.'
+        description: 'Adjust the audio levels of the video.',
+        user_description: 'I will balance all audio elements (music, voice, effects) to ensure clear and professional sound quality.'
       },
       {
         name: 'add_sound_effects',  
-        description: 'Add sound effects to the video.'
+        description: 'Add sound effects to the video.',
+        user_description: 'I will enhance your video with appropriate sound effects to create a more immersive experience.'
       },
     ]
-
-    let tasksToPerform: Operation[] = []
 
     // Initialize the OpenAI client.
     const client = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY
     })
 
-    // Create messages that include the full list of available operations.
-    // The assistant is instructed to return an array of objects, each with the following keys:
-    // "operation_name" (which should match one of the available operations) and "perform" (true or false).
-    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-      {
-        role: "system",
-        content: `You are a video editing assistant.
-Based on the user's prompt, decide which of the following operations should be performed.
-Return a JSON array of objects with two keys:
-"operation_name": a string corresponding to one of the following operations: ${taskList.map(t => t.name).join(', ')},
-"perform": a boolean indicating whether the operation should be performed.`
-      },
-      { role: "user", content: userPrompt }
-    ]
+    let tasksToPerform: Operation[] = []
+    let attempts = 0;
+    let isCorrect = false;
 
-    // Use OpenAI's chat completions with the custom response format.
-    const completion = await client.beta.chat.completions.parse({
-      model: "gpt-4o-2024-08-06",
-      messages,
-      response_format: zodResponseFormat(schema, "task_operations"),
-    })
+    while (attempts < 5 && !isCorrect) {
+      // Create messages that include the full list of available operations and video information
+      const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+        {
+          role: "system",
+          content: `You are a video editing assistant.
+          Based on the user's prompt, decide which of the following operations should be performed.
+          Return a JSON array of objects with two keys:
+          "operation_name": a string corresponding to one of the following operations: ${taskList.map(t => t.name).join(', ')},
+          "perform": a boolean indicating whether the operation should be performed.`
+        },
+        { role: "user", content: userPrompt }
+      ]
 
-    // Extract the parsed output and handle possible null
-    const operationsDecision = completion.choices[0].message.parsed
+      // Use OpenAI's chat completions with the custom response format.
+      const completion = await client.beta.chat.completions.parse({
+        model: "gpt-4o-2024-08-06",
+        messages,
+        response_format: zodResponseFormat(schema, "task_operations"),
+      })
 
-    for (const task of taskList) {
-      if (operationsDecision && operationsDecision[task.name as keyof typeof operationsDecision]) {
-        tasksToPerform.push(task)
+      // Extract the parsed output and handle possible null
+      const operationsDecision = completion.choices[0].message.parsed
+
+      // Clear previous tasks
+      tasksToPerform = []
+      for (const task of taskList) {
+        if (operationsDecision && operationsDecision[task.name as keyof typeof operationsDecision]) {
+          tasksToPerform.push(task)
+        }
+      }
+
+      // Verify the response with GPT-4
+      const verificationMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+        {
+          role: "system",
+          content: `You are a verification assistant. Review if the selected video editing operations make sense for the user's request. 
+          Return only "true" if the operations are correct, or "false" if they seem incorrect.`
+        },
+        {
+          role: "user",
+          content: `User prompt: "${userPrompt}"
+          Selected operations: ${tasksToPerform.map(t => t.name).join(', ')}
+          
+          Are these operations correctly categorized? Reply with only true or false.`
+        }
+      ]
+
+      const verificationResponse = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: verificationMessages,
+        temperature: 0.2,
+      })
+
+      const verificationResult = verificationResponse.choices[0].message.content?.toLowerCase()
+      isCorrect = verificationResult === 'true'
+      attempts++
+
+      if (!isCorrect && attempts < 5) {
+        console.log(`Attempt ${attempts}: Verification failed, regenerating...`)
+        continue
+      }
+    }
+
+    if (attempts === 5 && !isCorrect) {
+      console.log('Maximum attempts reached, returning last result despite verification failure')
+    }
+
+    // Add trimming guidance after verification
+    console.log('tasksToPerform', tasksToPerform)
+    for (const task of tasksToPerform) {
+      if (task.name === 'trim_based_on_visuals') {
+        console.log('Generating trim guidance for trim_based_on_visuals task...');
+        const trimResponse = await client.chat.completions.create({
+          model: "gpt-4",
+          messages: [
+            {
+              role: "system",
+              content: `You are a video editing assistant specialized in identifying optimal trim points in videos.
+              Your task is to analyze the video timeline and user request to identify sections that should be removed.
+              Look for:
+              - Redundant or repetitive content
+              - Low-quality or irrelevant sections
+              - Sections that don't align with the user's intent
+              
+              You MUST return exactly two timestamps in the format "HH:MM:SS, HH:MM:SS" where:
+              - First timestamp is where to start cutting
+              - Second timestamp is where to end cutting
+              - Everything between these timestamps will be removed
+              - Timestamps must align with 0.5 second intervals (e.g., 00:00:00, 00:00:00.5, 00:01:00, etc.)
+              
+              Example valid response: "00:00:05, 00:00:15.5"
+              
+              You must identify some points to trim, if you are struggling, make sure to only trim a very small irrelevant section of the video.
+              
+              IMPORTANT: Return ONLY the timestamps with no additional text or explanation.`
+            },
+            {
+              role: "user",
+              content: `User request: "${userPrompt}"
+              
+              Video timeline information (captured every 0.5 seconds):
+              ${JSON.stringify(videoInformation, null, 2)}
+              
+              Based on this information, provide the exact timestamps (HH:MM:SS, HH:MM:SS) for the section that should be removed.`
+            }
+          ],
+          temperature: 0.7,
+        })
+        
+        const timestampResponse = trimResponse.choices[0].message.content || "";
+        const timestampRegex = /^(\d{2}:\d{2}:\d{2}(\.\d)?),\s*(\d{2}:\d{2}:\d{2}(\.\d)?)$/;
+        
+        console.log('GPT Timestamp Response:', timestampResponse);
+        
+        if (timestampResponse === "UNABLE_TO_DETERMINE_TRIM_POINTS") {
+          console.log('Unable to determine trim points from user request');
+          task.trimming_guidance = undefined;
+        } else if (timestampRegex.test(timestampResponse)) {
+          task.trimming_guidance = timestampResponse;
+          console.log(`Trim guidance for ${task.name}: ${timestampResponse}`);
+        } else {
+          console.error('Invalid timestamp format received:', timestampResponse);
+          task.trimming_guidance = undefined;
+        }
       }
     }
 

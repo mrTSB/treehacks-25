@@ -478,7 +478,10 @@ export default function Home() {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ userPrompt: newMessage }),
+      body: JSON.stringify({ 
+        userPrompt: newMessage,
+        videoInformation 
+      }),
     });
 
     const data = await response.json();
@@ -486,7 +489,7 @@ export default function Home() {
     const tasks = data.tasks;
 
     for (const task of tasks) {
-      const message =`Performing ${task.name}: ${task.description}`;
+      const message =`${task.user_description}`;
       const aiMessage = { text: message, sender: 'ai' as const };
       setMessages(prev => [...prev, aiMessage]);
 
