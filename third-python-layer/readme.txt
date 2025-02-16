@@ -1,12 +1,12 @@
 To get started:
 
-python -m venv venvlayerone
+python -m venv venvlayerthree
 
 # On Windows:
-venvlayerone\Scripts\activate
+venvlayerthree\Scripts\activate
 # On Unix or MacOS:
 source venv/bin/activate
 
 pip install -r requirements.txt
 
-uvicorn app:app --reload
+uvicorn main:app --reload
