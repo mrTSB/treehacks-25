@@ -21,6 +21,7 @@ const schema = z.object({
   add_sound_effects: z.boolean(),
   generate_podcast_clip: z.boolean(),
   extend_video: z.boolean(),
+  apply_filters: z.boolean(),
 })
 
 /**
@@ -84,6 +85,11 @@ export async function POST(request: Request) {
         name: 'extend_video',
         description: 'Extend the video with a prompt and then stitch it to the original video.',
         user_description: 'I will generate extra content for the video.'
+      },
+      {
+        name: 'apply_filters',
+        description: 'Apply filters to the video.',
+        user_description: 'I will apply filters to the video to enhance the video quality.'
       }
     ]
 

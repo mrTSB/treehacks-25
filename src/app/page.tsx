@@ -921,6 +921,8 @@ export default function Home() {
         await handleGenerateVoiceover();
       } else if (task.name === 'trim_based_on_visuals') {
         handleCutVideo(false, task.trimming_guidance);
+      } else if (task.name === 'apply_filters') {
+        await handleApplyFilters();
       }
     }
 
@@ -1010,6 +1012,97 @@ export default function Home() {
       setProcessing(false);
     }
   }, [video, videoUrl]);
+
+  const handleApplyFilters = useCallback(async () => {
+    console.log('Applying filters');
+    if (!video) return;
+    setProcessing(true);
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          // First save the video
+          const response = await fetch('/api/save-video', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              filename: video.name,
+              data: reader.result,
+              pythonLayer: 'i_love_nvidia'
+            }),
+          });
+    
+          if (!response.ok) {
+            throw new Error('Failed to save video');
+          }
+
+          // Get filter description from Gemini based on video context
+          const description = "Car driving through race track."
+          console.log('Filter description:', description);
+
+          // Apply filters with the AI-generated description
+          const filtersResponse = await fetch(`http://localhost:8004/apply-filters`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              video_path: `raw/${video.name}`,
+              description: description
+            }),
+          });
+
+          if (!filtersResponse.ok) {
+            throw new Error('Failed to apply filters');
+          }
+
+          const result = await filtersResponse.json();
+          console.log('Apply filters result:', result);
+
+          if (result.status === 'success') {
+            const filePath = result.output_path;
+            const readResponse = await fetch('/api/read-video', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ filePath, pythonLayer: 'i_love_nvidia' }),
+            });
+
+            if (!readResponse.ok) {
+              throw new Error('Failed to read video file');
+            }
+
+            const videoBlob = await readResponse.blob();
+            const newVideoUrl = URL.createObjectURL(videoBlob);
+            setVideoUrl(newVideoUrl); 
+
+            const newVideoFile = new File([videoBlob], 'filtered-video.mp4', { type: video.type || 'video/mp4' });
+            setVideo(newVideoFile);
+
+            if (videoRef.current) {
+              videoRef.current.currentTime = 0;
+            }
+            setCurrentTime(0);
+            setIsPlaying(false);
+          }
+        } catch (error) {
+          console.error('Error applying filters:', error);
+          console.log('Failed to apply filters');
+        }
+      };
+
+      reader.readAsDataURL(video);
+    } catch (error) {
+      console.error('Error applying filters:', error);
+      alert('Failed to apply filters');
+    } finally {
+      setProcessing(false);
+    }
+  }, [video, videoUrl, videoInformation]);
 
   useEffect(() => {
     // Scroll to bottom when messages update

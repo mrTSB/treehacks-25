@@ -55,3 +55,4 @@ env/
 ENV/
 *.venv
 pyvenv.cfg
+.venv2/
