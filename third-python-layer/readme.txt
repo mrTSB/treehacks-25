@@ -5,7 +5,7 @@ python -m venv venvlayerthree
 # On Windows:
 venvlayerthree\Scripts\activate
 # On Unix or MacOS:
-source venv/bin/activate
+source venvlayerthree/bin/activate
 
 pip install -r requirements.txt
 
