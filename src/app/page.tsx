@@ -786,11 +786,11 @@ export default function Home() {
           const result = await extendResponse.json();
           console.log('Extend video result:', result);
   
-          if (result.output_video) {
+          if (result) {
             if (videoUrl) {
               URL.revokeObjectURL(videoUrl);
             }
-            const filePath = result.output_video;
+            const filePath = result;
             const readResponse = await fetch('/api/read-video', {
               method: 'POST',
               headers: {
