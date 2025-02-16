@@ -64,7 +64,6 @@ export default function Home() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const analyzeVideoFrames = async (video: HTMLVideoElement) => {
-    return
     setIsAnalyzing(true);
     setAnalysisProgress(0);
     const canvas = document.createElement('canvas');
@@ -874,6 +873,8 @@ export default function Home() {
         await handleGenerateSoundEffects();
       } else if (task.name === 'extend_video') {
         await handleExtendVideo();
+      } else if (task.name === 'generate_voiceover') {
+        await handleGenerateVoiceover();
       }
     }
 
@@ -882,6 +883,88 @@ export default function Home() {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   };
+
+  const handleGenerateVoiceover = useCallback(async () => {
+    if (!video) return;
+    setProcessing(true);
+    
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const response = await fetch('/api/save-video', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              filename: video.name,
+              data: reader.result,
+              pythonLayer: 'python-layer'
+            }),
+          });
+  
+          if (!response.ok) {
+            throw new Error('Failed to save video');
+          }
+  
+          const voiceoverResponse = await fetch(`http://localhost:8000/generate-voiceover?filename=${video.name}`, {
+            method: 'POST',
+          });
+  
+          if (!voiceoverResponse.ok) {
+            throw new Error('Failed to generate voiceover');
+          }
+  
+          const result = await voiceoverResponse.json();
+          console.log('Voiceover result:', result);
+  
+          if (result.processed_file) {
+            if (videoUrl) {
+              URL.revokeObjectURL(videoUrl);
+            }
+            const filePath = result.processed_file;
+            const readResponse = await fetch('/api/read-video', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ filePath, pythonLayer: 'python-layer' }),
+            });
+  
+            if (!readResponse.ok) {
+              throw new Error('Failed to read video file');
+            }
+  
+            const videoBlob = await readResponse.blob();
+            const newVideoUrl = URL.createObjectURL(videoBlob);
+            setVideoUrl(newVideoUrl);
+  
+            // Update video state with the processed file
+            const newVideoFile = new File([videoBlob], 'voiceover-video.mp4', { type: video.type || 'video/mp4' });
+            setVideo(newVideoFile);
+  
+            if (videoRef.current) {
+              videoRef.current.currentTime = 0;
+            }
+            setCurrentTime(0);
+            setIsPlaying(false);
+          }
+        } catch (error) {
+          console.error('Error generating voiceover:', error);
+          console.log('Failed to generate voiceover');
+        }
+      };
+  
+      reader.readAsDataURL(video);
+    } catch (error) {
+      console.error('Error generating voiceover:', error);
+      alert('Failed to generate voiceover');
+    } finally {
+      setProcessing(false);
+    }
+  }, [video, videoUrl]);
+  
 
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-900">
