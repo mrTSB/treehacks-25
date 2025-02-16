@@ -899,9 +899,16 @@ export default function Home() {
     const data = await response.json();
     const tasks = data.tasks;
 
+    console.log(tasks)
+
     if (tasks.length > 0) {
-      const task = tasks[0];
-      const message =`${task.user_description}`;
+      // Skip trim_based_on_visuals if there's another task available
+      let task = tasks[0];
+      if (task.name === 'trim_based_on_visuals' && tasks.length > 1) {
+        task = tasks[1];
+      }
+
+      const message = `${task.reason}`;  // Changed from task.user_description to task.reason
       const aiMessage = { text: message, sender: 'ai' as const };
       setMessages(prev => [...prev, aiMessage]);
 
@@ -927,6 +934,59 @@ export default function Home() {
     // Scroll to bottom
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  };
+
+  const handleViralize = async () => {
+    if (!video || !videoInformation) return;
+    
+    try {
+      const response = await fetch('/api/handle-virality', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          videoInformation
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to process virality');
+      }
+
+      const result = await response.json();
+      const tasks = result.operations;
+
+      if (tasks.length > 0) {
+        // Skip trim_based_on_visuals if there's another task available
+        let task = tasks[0];
+        if (task.name === 'trim_based_on_visuals' && tasks.length > 1) {
+          task = tasks[1];
+        }
+
+        const message = `${task.reason}`;  // Changed from task.user_description to task.reason
+        const aiMessage = { text: message, sender: 'ai' as const };
+        setMessages(prev => [...prev, aiMessage]);
+
+        if (task.name === 'generate_visuals') {
+          await handleReplaceVisuals();
+        } else if (task.name === 'remove_unnecessary_audio') {
+          await handleCleanup();
+        } else if (task.name === 'generate_text_overlay') {
+          await handleGenerateCaptions();
+        } else if (task.name === 'generate_podcast_clip') {
+          await handleGeneratePodcastClip();
+        } else if (task.name === 'add_sound_effects') {
+          await handleGenerateSoundEffects();
+        } else if (task.name === 'extend_video') {
+          await handleExtendVideo();
+        } else if (task.name === 'generate_voiceover') {
+          await handleGenerateVoiceover();
+        }
+      }
+    } catch (error) {
+      console.error('Error processing virality:', error);
     }
   };
 
@@ -1116,7 +1176,7 @@ export default function Home() {
           handleSendMessage={handleSendMessage}
           newMessage={newMessage}
           setNewMessage={setNewMessage}
-          handleViralize={() => console.log("Viralize")}
+          handleViralize={handleViralize}
           handleExport={() => handleCutVideo(true)}
           />
         </div>
