@@ -1,4 +1,4 @@
-# 🚨 DISCLAIMER: USE THE `ADENG` BRANCH 🚨
+# 🚨 DISCLAIMER: USE THE `ADENG` BRANCH, MAIN SUFFERED AN UNFORTUNATE DEMISE 🚨
 
 **This project requires you to use the `adeng` branch.**  
 Make sure you switch to `adeng` before making any changes.  
